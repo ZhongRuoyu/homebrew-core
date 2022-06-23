@@ -4,6 +4,7 @@ class Avrdude < Formula
   url "https://github.com/avrdudes/avrdude/archive/refs/tags/v7.3.tar.gz"
   sha256 "1c61ae67aacf8b8ccae5741f987ba4b0c48d6e320405520352a8eca8c6e2c457"
   license "GPL-2.0-or-later"
+  revision 1
   head "https://github.com/avrdudes/avrdude.git", branch: "main"
 
   bottle do
@@ -26,8 +27,7 @@ class Avrdude < Formula
   uses_from_macos "flex" => :build
 
   on_macos do
-    # https://github.com/avrdudes/avrdude/issues/1653
-    depends_on "libelf" => :build
+    depends_on "elftoolchain"
   end
 
   on_linux do
