@@ -23,6 +23,9 @@ class Bmake < Formula
   uses_from_macos "bc" => :build
 
   def install
+    # Don't pass flat_namespace to dependents build
+    inreplace "mk/lib.mk", "-flat_namespace -undefined suppress", "-undefined dynamic_lookup"
+
     # -DWITHOUT_PROG_LINK means "don't symlink as bmake-VERSION."
     # shell-ksh test segfaults since macOS 11.
     args = ["--prefix=#{prefix}", "-DWITHOUT_PROG_LINK", "--install", "BROKEN_TESTS=shell-ksh"]
