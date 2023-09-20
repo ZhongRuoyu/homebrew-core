@@ -15,7 +15,7 @@ class AmmoniteRepl < Formula
     sha256 cellar: :any_skip_relocation, all: "16fae29b00bbce7d4ee0df2dce4b7a1bea69fc8264fc35488896114385fc3da7"
   end
 
-  depends_on "openjdk"
+  depends_on "openjdk@17"
 
   def install
     (libexec/"bin").install Dir["*"].first => "amm"
