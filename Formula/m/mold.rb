@@ -48,8 +48,27 @@ class Mold < Formula
     cause "Requires C++20"
   end
 
+  def file_prepend(filename, contents)
+    path = Pathname(filename)
+    old_contents = path.read
+    path.atomic_write <<~EOS
+      #{contents}
+      #{old_contents}
+    EOS
+  end
+
   def install
     ENV.llvm_clang if OS.mac? && (DevelopmentTools.clang_build_version <= 1500)
+
+    if OS.linux?
+      # `mold-wrapper.so`, is a shared object file designed to be used with
+      # `LD_PRELOAD`. Since it can be loaded with arbitrary binaries outside of
+      # Homebrew, we need to make sure its symbols are compatible with the
+      # system linker.
+      file_prepend "elf/mold-wrapper.c", <<~EOS
+        __asm__(".symver dlsym, dlsym@GLIBC_2.2.5");
+      EOS
+    end
 
     # Avoid embedding libdir in the binary.
     # This helps make the bottle relocatable.
@@ -67,6 +86,16 @@ class Mold < Formula
     system "cmake", "-S", ".", "-B", "build", *args, *std_cmake_args
     system "cmake", "--build", "build"
     system "cmake", "--install", "build"
+
+    if OS.linux?
+      # `dlsym` has been integrated into libc in glibc 2.34, so libdl is not
+      # linked anymore. To allow it to be used on older systems, we need to make
+      # sure libdl is added as a dependency. This does not affect systems with
+      # glibc 2.34 or newer, because libdl is kept as an empty library.
+      patcher = (lib/"mold/mold-wrapper.so").patchelf_patcher
+      patcher.add_needed "libdl.so.2"
+      patcher.save
+    end
 
     pkgshare.install "test"
   end
