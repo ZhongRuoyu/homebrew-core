@@ -26,8 +26,6 @@ class Bear < Formula
   depends_on "protobuf"
   depends_on "spdlog"
 
-  uses_from_macos "llvm" => :test
-
   on_macos do
     depends_on "llvm" if DevelopmentTools.clang_build_version <= 1100
   end
@@ -40,17 +38,61 @@ class Bear < Formula
     EOS
   end
 
+  def file_prepend(filename, contents)
+    path = Pathname(filename)
+    old_contents = path.read
+    path.atomic_write <<~EOS
+      #{contents}
+      #{old_contents}
+    EOS
+  end
+
   def install
     ENV.llvm_clang if OS.mac? && (DevelopmentTools.clang_build_version <= 1100)
+
+    if OS.linux?
+      [
+        "source/intercept/source/report/libexec/Linker.cc",
+        "source/libsys/source/Process.cc",
+      ].each do |file|
+        file_prepend file, <<~EOS
+          __asm__(".symver dlsym, dlsym@GLIBC_2.2.5");
+        EOS
+      end
+
+      file_prepend "source/intercept/source/report/libexec/Resolver.cc", <<~EOS
+        extern "C" {
+          __asm__(".symver __xstat, __xstat@@@GLIBC_2.2.5");
+          int __xstat(int __ver, const char *__filename,
+                      struct stat *__stat_buf);
+
+          static int stat(const char *__filename, struct stat *__stat_buf) {
+            // https://github.com/bminor/glibc/blob/glibc-2.35/sysdeps/unix/sysv/linux/x86/xstatver.h
+            return __xstat(1, __filename, __stat_buf);
+          }
+        }
+      EOS
+
+      ENV.append "LDFLAGS", "-static-libstdc++ -static-libgcc"
+    end
 
     args = %w[
       -DENABLE_UNIT_TESTS=OFF
       -DENABLE_FUNC_TESTS=OFF
     ]
-
     system "cmake", "-S", ".", "-B", "build", *args, *std_cmake_args
     system "cmake", "--build", "build"
     system "cmake", "--install", "build"
+
+    if OS.linux?
+      # `dlsym` has been integrated into libc in glibc 2.34, so libdl is not
+      # linked anymore. To allow it to be used on older systems, we need to make
+      # sure libdl is added as a dependency. This does not affect systems with
+      # glibc 2.34 or newer, because libdl is kept as an empty library.
+      patcher = (lib/"bear/libexec.so").patchelf_patcher
+      patcher.add_needed "libdl.so.2"
+      patcher.save
+    end
   end
 
   test do
@@ -61,7 +103,7 @@ class Bear < Formula
         return 0;
       }
     C
-    system bin/"bear", "--", "clang", "test.c"
+    system bin/"bear", "--", ENV.cc, "test.c"
     assert_path_exists testpath/"compile_commands.json"
   end
 end
